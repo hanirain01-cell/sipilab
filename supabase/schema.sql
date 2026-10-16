@@ -462,3 +462,116 @@ do $$ begin
   begin alter publication supabase_realtime add table public.loans;     exception when others then null; end;
   begin alter publication supabase_realtime add table public.furniture; exception when others then null; end;
 end $$;
+
+-- =====================================================================
+--  AKUN LOGIN TANPA SERVER (v6.1)
+--  Akun Super Admin & kepala lab dibuat langsung oleh database, jadi
+--  aplikasi cukup memakai URL + anon key (tidak perlu service_role key
+--  atau Environment Variables di Vercel).
+-- =====================================================================
+create or replace function public._domain() returns text language sql immutable as $$ select 'sipinlab.app' $$;
+
+create or replace function public._buat_user(p_email text, p_password text) returns uuid
+language plpgsql security definer set search_path = public, extensions, auth as $$
+declare v_id uuid := gen_random_uuid(); v_email text := lower(trim(p_email));
+begin
+  if length(coalesce(p_password, '')) < 6 then raise exception 'Password minimal 6 karakter'; end if;
+  if exists (select 1 from auth.users where lower(email) = v_email) then raise exception 'Username sudah dipakai di sekolah ini'; end if;
+  insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+                          raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+                          confirmation_token, recovery_token, email_change_token_new, email_change)
+  values ('00000000-0000-0000-0000-000000000000', v_id, 'authenticated', 'authenticated', v_email,
+          crypt(p_password, gen_salt('bf')), now(),
+          '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now(), '', '', '', '');
+  insert into auth.identities (id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+  values (gen_random_uuid(), v_id::text, v_id, jsonb_build_object('sub', v_id::text, 'email', v_email, 'email_verified', true),
+          'email', now(), now(), now());
+  return v_id;
+end $$;
+revoke execute on function public._buat_user(text, text) from public, anon, authenticated;
+
+-- Super Admin pertama (hanya bisa sekali, saat belum ada Super Admin)
+create or replace function public.setup_super(p_username text, p_password text, p_nama text default '') returns json
+language plpgsql security definer set search_path = public as $$
+declare u text := lower(trim(coalesce(p_username, ''))); v_id uuid;
+begin
+  if exists (select 1 from public.profiles where role = 'superadmin') then raise exception 'Super Admin sudah ada. Silakan login.'; end if;
+  if u !~ '^[a-z0-9._-]{3,32}$' then raise exception 'Username 3–32 karakter: huruf kecil, angka, titik, minus, garis bawah'; end if;
+  v_id := public._buat_user(u || '@' || public._domain(), p_password);
+  insert into public.profiles (id, username, nama, role, school_id, menus, aktif)
+  values (v_id, u, coalesce(nullif(trim(p_nama), ''), u), 'superadmin', null, '{beranda,lab3d,scan,anggota,alat,riwayat,tataletak,pengaturan}', true);
+  return json_build_object('id', v_id, 'username', u);
+end $$;
+
+-- buat akun kepala lab (admin sekolah) atau Super Admin lain
+create or replace function public.buat_akun(p_username text, p_password text, p_nama text default '', p_role text default 'admin', p_school uuid default null) returns json
+language plpgsql security definer set search_path = public as $$
+declare u text := lower(trim(coalesce(p_username, ''))); r text := case when p_role = 'superadmin' then 'superadmin' else 'admin' end;
+        s public.schools; v_id uuid; p public.profiles;
+begin
+  if r = 'superadmin' then
+    if not public.is_super() then raise exception 'Hanya Super Admin yang boleh membuat akun Super Admin'; end if;
+  else
+    if p_school is null then raise exception 'Sekolah wajib dipilih'; end if;
+    if not (public.is_super() or (public.is_admin() and p_school = public.my_school())) then raise exception 'Anda tidak punya akses untuk tindakan ini'; end if;
+    select * into s from public.schools where id = p_school;
+    if not found then raise exception 'Sekolah tidak ditemukan'; end if;
+  end if;
+  if u !~ '^[a-z0-9._-]{3,32}$' then raise exception 'Username 3–32 karakter: huruf kecil, angka, titik, minus, garis bawah'; end if;
+  if exists (select 1 from public.profiles where username = u and school_id is not distinct from (case when r = 'superadmin' then null else p_school end)) then
+    raise exception 'Username sudah dipakai di sekolah ini'; end if;
+  v_id := public._buat_user(case when r = 'superadmin' then u else u || '.' || s.kode end || '@' || public._domain(), p_password);
+  insert into public.profiles (id, username, nama, role, school_id, menus, aktif)
+  values (v_id, u, coalesce(nullif(trim(p_nama), ''), u), r, case when r = 'superadmin' then null else p_school end,
+          '{beranda,lab3d,scan,anggota,alat,riwayat,tataletak,pengaturan}', true) returning * into p;
+  return row_to_json(p);
+end $$;
+
+create or replace function public._boleh_kelola(t public.profiles) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_super() or (public.is_admin() and t.role <> 'superadmin' and t.school_id = public.my_school());
+$$;
+revoke execute on function public._boleh_kelola(public.profiles) from public, anon, authenticated;
+
+create or replace function public.ubah_akun(p_id uuid, p_password text default null, p_nama text default null, p_aktif boolean default null) returns json
+language plpgsql security definer set search_path = public, extensions, auth as $$
+declare t public.profiles;
+begin
+  select * into t from public.profiles where id = p_id;
+  if not found or not public._boleh_kelola(t) then raise exception 'Akun tidak ditemukan'; end if;
+  if p_aktif = false and p_id = auth.uid() then raise exception 'Tidak bisa menonaktifkan akun sendiri'; end if;
+  if coalesce(p_password, '') <> '' then
+    if length(p_password) < 6 then raise exception 'Password minimal 6 karakter'; end if;
+    update auth.users set encrypted_password = crypt(p_password, gen_salt('bf')), updated_at = now() where id = p_id;
+  end if;
+  update public.profiles set nama = coalesce(nullif(trim(p_nama), ''), nama), aktif = coalesce(p_aktif, aktif) where id = p_id returning * into t;
+  return row_to_json(t);
+end $$;
+
+create or replace function public.hapus_akun(p_id uuid) returns void
+language plpgsql security definer set search_path = public, auth as $$
+declare t public.profiles;
+begin
+  select * into t from public.profiles where id = p_id;
+  if not found or not public._boleh_kelola(t) then raise exception 'Akun tidak ditemukan'; end if;
+  if p_id = auth.uid() then raise exception 'Tidak bisa menghapus akun sendiri'; end if;
+  delete from auth.users where id = p_id;
+end $$;
+
+create or replace function public.hapus_sekolah(p_school uuid, p_konfirmasi text) returns json
+language plpgsql security definer set search_path = public, auth as $$
+declare s public.schools; n int;
+begin
+  if not public.is_super() then raise exception 'Hanya Super Admin yang boleh menghapus sekolah'; end if;
+  select * into s from public.schools where id = p_school;
+  if not found then raise exception 'Sekolah tidak ditemukan'; end if;
+  if coalesce(p_konfirmasi, '') <> s.kode then raise exception 'Ketik kode sekolah dengan benar untuk konfirmasi'; end if;
+  delete from auth.users where id in (select id from public.profiles where school_id = s.id);
+  get diagnostics n = row_count;
+  delete from public.schools where id = s.id;
+  return json_build_object('ok', true, 'akunDihapus', n);
+end $$;
+
+grant execute on function public.setup_super(text, text, text) to anon, authenticated;
+grant execute on function public.buat_akun(text, text, text, text, uuid), public.ubah_akun(uuid, text, text, boolean),
+  public.hapus_akun(uuid), public.hapus_sekolah(uuid, text) to authenticated;

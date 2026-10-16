@@ -20,7 +20,7 @@ window.addEventListener('error',function(e){if(e&&e.target&&(e.target.src||e.tar
 <div class="cartbar" id="cartbar"><div class="in"><div class="grow"><b id="cartN">0 alat</b><div class="small muted" id="cartList"></div></div><button class="btn lg" data-act="ajukan">Ajukan peminjaman</button></div></div>
 <div class="modal" id="dlgModal"><div class="dlg" id="dlgBox"></div></div>
 <div id="toasts"></div>
-<script>['g3','api','core','siswa'].forEach(function(n){document.write('<script src="'+__B+'js/'+n+'.js"><\/script>');});</script>
+<script>['config','g3','api','core','siswa'].forEach(function(n){document.write('<script src="'+__B+'js/'+n+'.js"><\/script>');});</script>
 <script>setTimeout(function(){if(typeof boot!=='function')__fail('Script aplikasi tidak termuat.');},4000);</script>
 </body>
 </html>

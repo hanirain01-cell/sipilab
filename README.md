@@ -38,28 +38,26 @@ Tips foto: satu alat utuh, cahaya terang, latar polos yang kontras.
 
 Denah lab 3D & editor tata letak dari v5 **tidak dipakai lagi** agar aplikasi lebih ringkas.
 
-## Pemasangan / upgrade
+## Pemasangan (tanpa pengaturan di Vercel)
+Koneksi ke Supabase cukup diatur **di aplikasinya sendiri**. Hanya butuh **Project URL** dan **anon key**; `service_role key` dan Environment Variables Vercel **tidak diperlukan lagi**.
 
-### Upgrade dari v5 (database sudah ada)
-1. Supabase → **SQL Editor → New query** → tempel **seluruh isi** `supabase/schema.sql` → **Run**. Data lama (sekolah, alat, anggota, riwayat) tetap ada; riwayat lama otomatis diberi status *dipinjam/kembali*.
-2. Ganti semua file di GitHub dengan isi folder ini (hapus `js/app.js`, `js/barcode.js`, `css/app.css` yang lama), lalu Vercel akan deploy ulang otomatis.
-3. Akun staf/siswa lama tidak dipakai lagi (siswa tidak perlu akun). Akun kepala lab = akun **admin** sekolah yang sudah ada.
+1. **Supabase**: https://supabase.com → **New project** (region Singapore) → **SQL Editor → New query** → tempel isi `supabase/schema.sql` → **Run**. Lalu (opsional) jalankan `supabase/data-contoh.sql` dengan cara yang sama.
+2. **Ambil kunci**: **Project Settings → API Keys** → salin **Project URL** dan **anon key** (tab *Legacy API keys*). Jika tidak ada, pakai *publishable key*. Jangan pakai service_role / secret key.
+3. **Hubungkan**, pilih salah satu:
+   - **Dari aplikasi**: buka halaman kepala lab → klik **🔌 Hubungkan ke Supabase** → tempel URL & anon key → **Tes & hubungkan** → klik **Unduh config.js**.
+   - **Atau edit langsung** file `js/config.js` (buka dengan Notepad) dan isi `url` dan `anonKey`.
+4. **Pastikan `js/config.js` yang sudah terisi ikut diunggah** ke hosting (Vercel/GitHub/Netlify). Tanpa langkah ini, hanya browser Anda yang terhubung, sedangkan HP siswa masih Mode demo.
+5. Buka halaman kepala lab → muncul **Buat akun Super Admin** → isi. Lalu **Kelola Sekolah** → pilih sekolah → **Ubah** → *Akun kepala lab* → **Tambah**.
 
-### Pemasangan baru
-1. https://supabase.com → **New project** (region Singapore) → **SQL Editor** → jalankan `supabase/schema.sql`.
-2. **Project Settings → API**: catat Project URL, anon key, service_role key.
-3. Unggah folder ini ke GitHub → https://vercel.com → **Add New → Project** → Framework Preset **Other**.
-4. **Environment Variables**:
+Link yang dibagikan:
+- Di Vercel: siswa `https://app-anda.vercel.app/<kode-sekolah>`, kepala lab `https://app-anda.vercel.app/<kode-sekolah>/admin`.
+- Di hosting lain: siswa `.../pinjam.html?s=<kode-sekolah>`, kepala lab `.../index.html?s=<kode-sekolah>`.
 
-| Name | Value |
-|---|---|
-| `SUPABASE_URL` | Project URL |
-| `SUPABASE_ANON_KEY` | anon public key |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role key |
-| `LOGIN_EMAIL_DOMAIN` | *(opsional, default `sipinlab.app`; jangan diubah setelah ada akun)* |
-| `MESHY_API_KEY` | *(opsional)* untuk model 3D AI |
+### Upgrade dari v5
+Jalankan ulang `supabase/schema.sql` (data lama aman), lalu ganti semua file aplikasi dengan isi folder ini (hapus `js/app.js`, `js/barcode.js`, `css/app.css` lama). Jika dulu memakai Environment Variables di Vercel, itu tetap berfungsi; `js/config.js` yang terisi akan dipakai lebih dulu.
 
-5. Deploy → buka `https://aplikasi-anda.vercel.app/admin` → buat akun Super Admin → **Sekolah → Tambah sekolah** (sekaligus membuat akun kepala lab) → kirim link & akun ke kepala lab.
+### Model 3D AI (opsional)
+Fitur Meshy AI tetap butuh server Vercel dengan `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, dan `MESHY_API_KEY`. Tanpa itu, visual 3D dari foto dan model bawaan tetap berjalan.
 
 ### Isi data contoh (alat + anggota)
 Setelah `schema.sql`, jalankan juga `supabase/data-contoh.sql` di SQL Editor. File ini mengisi **70 unit alat** (26 jenis, masing-masing dengan model 3D) dan **36 anggota** (32 siswa + guru/laboran) ke sekolah berkode `smk-contoh`. Ganti kode di baris `v_kode` (dan di query paling bawah) dengan kode sekolah Anda. Jika sekolahnya belum ada, file ini membuatnya; akun kepala lab lalu dibuat dari menu Super Admin. Aman dijalankan ulang (tidak dobel).
@@ -79,7 +77,7 @@ Buka keduanya di tab berbeda pada browser yang sama: pengajuan siswa langsung mu
 - Siswa tidak bisa membaca tabel database secara langsung. Halaman siswa hanya memanggil fungsi `portal_masuk`, `portal_ajukan`, dan `portal_batal`, yang memeriksa kode/NIS + nama dan hanya mengembalikan daftar alat serta pinjaman milik siswa itu sendiri.
 - Menyetujui, menolak, membuat peminjaman, dan mengonfirmasi pengembalian hanya bisa dilakukan akun kepala lab (admin) di sekolahnya sendiri. Aturan ini ditegakkan oleh database.
 - Batas: maksimal 10 alat per pengajuan dan 15 pengajuan menunggu per siswa.
-- `SUPABASE_SERVICE_ROLE_KEY` hanya ada di server Vercel.
+- Akun login dibuat oleh fungsi database (`setup_super`, `buat_akun`, `ubah_akun`, `hapus_akun`) yang memeriksa hak akses pemanggil. Aplikasi hanya memakai anon key yang memang aman untuk publik; service_role key tidak pernah dibutuhkan.
 
 ## Struktur folder
 ```
@@ -89,6 +87,7 @@ css/style.css         tampilan
 js/core.js            fungsi bersama + visual 3D alat
 js/admin.js           logika halaman kepala lab
 js/siswa.js           logika halaman siswa
+js/config.js          PENGATURAN SUPABASE (url + anon key)
 js/api.js             koneksi data (Supabase / demo)
 js/g3.js              mesin 3D & model alat bawaan
 api/config.js         (Vercel) konfigurasi publik

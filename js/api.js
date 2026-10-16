@@ -193,7 +193,7 @@ class SupaAPI{
     catch(e){ throw new Error('Tidak bisa menghubungi server ('+path+')'); }
     const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||`Gagal (${r.status})`); return j;
   }
-  async setupSuper(b){ return this._post('/api/admin',Object.assign({action:'setup'},b)); }
+  async setupSuper(b){ return this._q(this.sb.rpc('setup_super',{p_username:b.username,p_password:b.password,p_nama:b.nama||''})); }
   async _profile(){
     const {data:{user}}=await this.sb.auth.getUser(); if(!user) return null;
     const p=await this._q(this.sb.from('profiles').select('*').eq('id',user.id).maybeSingle());
@@ -231,7 +231,7 @@ class SupaAPI{
   async createSchool(row){ row=Object.assign({},row,{kode:String(row.kode||'').trim().toLowerCase()}); if(!validKode(row.kode)) throw new Error(translateErr('schools_kode_chk'));
     return this._q(this.sb.from('schools').insert(row).select().single()); }
   async updateSchool(id,patch){ patch=Object.assign({},patch); delete patch.kode; return this._q(this.sb.from('schools').update(patch).eq('id',id).select().single()); }
-  async deleteSchool(id,konfirmasi){ return this._post('/api/admin',{action:'deleteSchool',school_id:id,konfirmasi}); }
+  async deleteSchool(id,konfirmasi){ return this._q(this.sb.rpc('hapus_sekolah',{p_school:id,p_konfirmasi:konfirmasi})); }
   async addAnggota(rows){ return this._q(this.sb.from('anggota').insert(rows.map(r=>Object.assign({},r,{school_id:this.sid}))).select()); }
   async updateAnggota(id,patch){ return this._q(this.sb.from('anggota').update(patch).eq('id',id).select().single()); }
   async deleteAnggota(id){ await this._q(this.sb.from('anggota').delete().eq('id',id)); }
@@ -246,10 +246,10 @@ class SupaAPI{
   async tolak(id,alasan){ return this._q(this.sb.rpc('tolak_pinjam',{p_loan:id,p_alasan:alasan||''})); }
   async pinjamkan(anggotaId,itemIds,catatan){ return this._q(this.sb.rpc('admin_pinjamkan',{p_anggota:anggotaId,p_items:itemIds,p_catatan:catatan||''})); }
   async kembali(id,kondisi){ return this._q(this.sb.rpc('konfirmasi_kembali',{p_loan:id,p_kondisi:kondisi||'Baik'})); }
-  async listUsers(schoolId){ return (await this._post('/api/admin',{action:'list',school_id:schoolId})).users; }
-  async createUser(b){ return (await this._post('/api/admin',Object.assign({action:'create'},b,b.role==='superadmin'?{}:{school_id:b.school_id||this.sid}))).profile; }
-  async updateUser(b){ return (await this._post('/api/admin',Object.assign({action:'update'},b))).profile; }
-  async deleteUser(id){ await this._post('/api/admin',{action:'delete',id}); }
+  async listUsers(schoolId){ let q=this.sb.from('profiles').select('*').order('created_at',{ascending:true}); q=schoolId?q.eq('school_id',schoolId):q.eq('role','superadmin'); return this._q(q); }
+  async createUser(b){ return this._q(this.sb.rpc('buat_akun',{p_username:b.username,p_password:b.password,p_nama:b.nama||'',p_role:b.role||'admin',p_school:b.role==='superadmin'?null:(b.school_id||this.sid)})); }
+  async updateUser(b){ return this._q(this.sb.rpc('ubah_akun',{p_id:b.id,p_password:b.password||null,p_nama:b.nama??null,p_aktif:b.aktif??null})); }
+  async deleteUser(id){ await this._q(this.sb.rpc('hapus_akun',{p_id:id})); }
   async ai3dStart(id,ulang){ return this._post('/api/ai3d',{action:'start',item_id:id,ulang:!!ulang}); }
   async ai3dStatus(id){ return this._post('/api/ai3d',{action:'status',item_id:id}); }
   subscribe(cb){
@@ -263,9 +263,29 @@ class SupaAPI{
   async portalBatal(kode,ident,nama,loanId){ return this._q(this.sb.rpc('portal_batal',{p_kode:kode,p_ident:ident,p_nama:nama,p_loan:loanId})); }
 }
 
+/* urutan pengaturan: js/config.js → disimpan di browser ini (dari halaman "Hubungkan ke Supabase") → /api/config (Vercel) → Mode Demo */
+const CFG_KEY='sipinlab_supabase';
+function savedConfig(){ try{ const c=JSON.parse(localStorage.getItem(CFG_KEY)); return c&&c.url&&c.anonKey?c:null; }catch(e){ return null; } }
+function cleanUrl(u){ u=String(u||'').trim().replace(/\/+$/,'').replace(/\/rest\/v1$/,''); if(u&&!/^https?:\/\//.test(u)) u='https://'+u; return u; }
+async function testSupabase(url,anonKey){
+  url=cleanUrl(url); anonKey=String(anonKey||'').trim();
+  if(!/^https:\/\/.+/.test(url)) throw new Error('Project URL tidak valid (contoh: https://abcdxyz.supabase.co)');
+  if(!anonKey) throw new Error('Isi anon key / publishable key');
+  if(/^sb_secret_/.test(anonKey)||/service_role/.test((()=>{ try{ return atob(anonKey.split('.')[1]); }catch(e){ return ''; } })())) throw new Error('Itu kunci RAHASIA (service_role / secret). Pakai anon key / publishable key.');
+  let r; try{ r=await fetch(url+'/rest/v1/rpc/ada_superadmin',{method:'POST',headers:{apikey:anonKey,'Content-Type':'application/json',...(/^sb_/.test(anonKey)?{}:{Authorization:'Bearer '+anonKey})},body:'{}'}); }
+  catch(e){ throw new Error('Tidak bisa menghubungi '+url+'. Periksa Project URL & internet.'); }
+  const t=await r.text();
+  if(r.status===401||r.status===403) throw new Error('Anon key salah atau bukan milik project ini.');
+  if(r.status===404||/Could not find the function/i.test(t)) throw new Error('Terhubung, tetapi database belum disiapkan. Jalankan supabase/schema.sql di SQL Editor dulu.');
+  if(!r.ok) throw new Error('Gagal terhubung ('+r.status+'): '+t.slice(0,160));
+  return {url,anonKey};
+}
 async function createAPI(){
-  let cfg=null;
-  try{ const r=await fetch('/api/config',{cache:'no-store'}); if(r.ok&&/json/.test(r.headers.get('content-type')||'')) cfg=await r.json(); }catch(e){}
-  if(cfg&&cfg.configured){ const a=new SupaAPI(cfg); await a.init(); a.cfgInfo=cfg; return a; }
-  const d=new DemoAPI(); d.cfgMissing=!!cfg; return d.init();
+  const file=window.SIPINLAB_CONFIG||{};
+  let cfg=null, source='';
+  if(file.url&&file.anonKey){ cfg={url:cleanUrl(file.url),anonKey:String(file.anonKey).trim(),domain:file.domain}; source='file'; }
+  else if(savedConfig()){ cfg=Object.assign({},savedConfig()); source='browser'; }
+  else{ try{ const r=await fetch('/api/config',{cache:'no-store'}); if(r.ok&&/json/.test(r.headers.get('content-type')||'')){ const j=await r.json(); if(j.configured){ cfg=j; source='vercel'; } } }catch(e){} }
+  if(cfg){ cfg.configured=true; const a=new SupaAPI(cfg); await a.init(); a.cfgInfo=cfg; a.cfgSource=source; return a; }
+  const d=new DemoAPI(); return d.init();
 }

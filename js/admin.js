@@ -43,7 +43,7 @@ async function showLogin(err){
       ${err?`<div class="err">${esc(err)}</div>`:''}
     </div>
     ${setup?'':`<div class="foot"><a href="#" data-act="toggleSuper">${loginSuper?'Masuk sebagai kepala lab':'Masuk sebagai Super Admin'}</a>${sc&&!loginSuper?` · <a href="${esc(isLocal()?'pinjam.html?s='+sc.kode:'/'+sc.kode)}">Halaman siswa</a>`:''}</div>`}
-    ${API.mode==='demo'?`<div class="demo"><b>Mode demo</b> — data tersimpan di browser ini.${API.cfgMissing?' Supabase belum diatur di Vercel.':''}<br>Kepala lab: kode <b>demo</b>, <b>admin</b> / <b>admin123</b> · Super Admin: <b>super</b> / <b>super123</b><br>Halaman siswa: <a href="pinjam.html?s=demo">pinjam.html?s=demo</a> (coba kode <b>1</b>, nama <b>andi</b>)</div>`:''}
+    ${API.mode==='demo'?`<div class="demo"><b>Mode demo</b> — belum terhubung ke Supabase, data hanya tersimpan di browser ini.<div style="margin:10px 0"><button class="btn sm" data-act="hubungkan">🔌 Hubungkan ke Supabase</button></div>Coba dulu: kode <b>demo</b>, <b>admin</b> / <b>admin123</b> · Super Admin: <b>super</b> / <b>super123</b><br>Halaman siswa: <a href="pinjam.html?s=demo">pinjam.html?s=demo</a> (kode <b>1</b>, nama <b>andi</b>)</div>`:`<div class="foot" style="margin-top:8px"><a href="#" data-act="hubungkan">🔌 Pengaturan koneksi Supabase</a></div>`}
   </div></div>`;
   const lf=$('loginForm');
   if(lf){ setTimeout(()=>(($('lgKode')&&!$('lgKode').value)?$('lgKode'):$('lgUser')).focus(),30);
@@ -448,12 +448,43 @@ function pgPengaturan(v){
   <div class="card"><h2>Ganti password</h2><p class="small muted" style="margin:4px 0 0">Akun: <b>${esc(me.username)}</b></p>
     <div class="grid2"><div><label class="f">Password baru</label><input id="pw1" type="password" minlength="6" autocomplete="new-password"></div><div><label class="f">Ulangi</label><input id="pw2" type="password" autocomplete="new-password"></div></div>
     <div class="row" style="margin-top:18px;justify-content:flex-end"><button class="btn ghost" data-act="savePw">Ganti password</button></div></div>
-  ${API.mode==='demo'?`<div class="card"><h2>Mode demo</h2><p class="small muted" style="margin:4px 0 14px">Data tersimpan di browser ini saja.</p><button class="btn ghost" data-act="resetDemo" style="color:var(--bad)">Kembalikan data demo awal</button></div>`:''}
+  ${koneksiCard()}
+  ${API.mode==='demo'?`<div class="card"><h2>Data demo</h2><p class="small muted" style="margin:4px 0 14px">Data demo tersimpan di browser ini saja.</p><button class="btn ghost" data-act="resetDemo" style="color:var(--bad)">Kembalikan data demo awal</button></div>`:''}
   </div>`;
   let w=s.warna; $('sWarna').onclick=e=>{ const b=e.target.closest('[data-c]'); if(!b) return; w=b.dataset.c; $('sWarna').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); applyTheme(Object.assign({},s,{warna:w})); };
   $('sWarna').dataset.get='1'; v._warna=()=>w;
 }
 pgPengaturan.live=false;
+
+/* ======================================================================
+   KONEKSI SUPABASE (diatur dari aplikasi)
+   ====================================================================== */
+const SRC_NAME={file:'file js/config.js',browser:'disimpan di browser ini',vercel:'Environment Variables Vercel'};
+function koneksiCard(){ const on=API.mode==='supabase';
+  return `<div class="card"><h2>🔌 Koneksi database</h2>
+    <p class="small muted" style="margin:4px 0 12px">${on?`Terhubung ke Supabase <b>${esc(API.cfgInfo.url)}</b> · pengaturan dari ${esc(SRC_NAME[API.cfgSource]||'-')}.`:'Belum terhubung — aplikasi berjalan dalam <b>Mode demo</b>.'}</p>
+    ${on&&API.cfgSource==='browser'?`<div class="note" style="margin-bottom:12px">⚠️ Pengaturan ini baru tersimpan di browser ini. Agar siswa (HP lain) juga terhubung, unduh <b>config.js</b> lalu ganti file <b>js/config.js</b> di aplikasi Anda.</div>`:''}
+    <div class="row"><button class="btn ghost" data-act="hubungkan">${on?'Ubah koneksi':'🔌 Hubungkan ke Supabase'}</button>${on?`<button class="btn ghost" data-act="unduhConfig">${icon('download',16)} Unduh config.js</button>`:''}${API.cfgSource==='browser'?`<button class="btn link" data-act="putuskan" style="color:var(--bad)">Putuskan</button>`:''}</div></div>`; }
+function configJS(c){ return `/* PENGATURAN SUPABASE – dibuat oleh SiPinLab. Simpan sebagai js/config.js */\nwindow.SIPINLAB_CONFIG = {\n  url: '${c.url}',\n  anonKey: '${c.anonKey}'\n};\n`; }
+function unduhConfig(c){ download(new Blob([configJS(c)],{type:'text/javascript'}),'config.js'); }
+function hubungkanDlg(){ const c=(API.mode==='supabase'&&API.cfgInfo)||{};
+  dialog(`<div class="dlg-head"><h3>🔌 Hubungkan ke Supabase</h3><button class="btn link sm icon" data-act="closeDlg">${icon('x')}</button></div>
+    <ol class="small" style="margin:0 0 6px;padding-left:18px;color:var(--ink2);line-height:1.7">
+      <li>Buat project di <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a>.</li>
+      <li>Buka <b>SQL Editor</b> → jalankan <b>supabase/schema.sql</b> (lalu <b>data-contoh.sql</b> jika ingin data contoh).</li>
+      <li>Buka <b>Project Settings → API Keys</b>, salin <b>Project URL</b> dan <b>anon key</b> ke sini.</li></ol>
+    <label class="f">Project URL</label><input id="cUrl" value="${esc(c.url||'')}" placeholder="https://abcdxyz.supabase.co" autocapitalize="none" spellcheck="false">
+    <label class="f">Anon key / publishable key</label><textarea id="cKey" style="min-height:70px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px" placeholder="eyJhbGciOi... atau sb_publishable_..." spellcheck="false">${esc(c.anonKey||'')}</textarea>
+    <p class="hint">Jangan memasukkan <b>service_role</b> / <b>secret</b> key — kunci itu rahasia dan tidak diperlukan.</p>
+    <div id="cErr"></div>
+    <div class="dlg-actions"><button class="btn ghost" data-act="closeDlg">Batal</button><button class="btn" id="cOk">Tes &amp; hubungkan</button></div>`,'mid');
+  $('cOk').onclick=async()=>{ $('cErr').innerHTML=''; busy(true);
+    try{ const cfg=await testSupabase($('cUrl').value,$('cKey').value); localStorage.setItem(CFG_KEY,JSON.stringify(cfg));
+      dialog(`<h3>✅ Berhasil terhubung</h3><p class="dlg-text">Browser ini sekarang memakai Supabase Anda.</p>
+        <div class="note"><b>Langkah terakhir agar siswa juga terhubung:</b><br>Unduh <b>config.js</b> di bawah, lalu ganti file <b>js/config.js</b> di folder aplikasi (atau di GitHub/hosting Anda) dengan file ini.</div>
+        <div class="dlg-actions"><button class="btn ghost" id="cDl">${icon('download',16)} Unduh config.js</button><button class="btn" id="cGo">Lanjut</button></div>`,'mid');
+      $('cDl').onclick=()=>unduhConfig(cfg); $('cGo').onclick=()=>{ location.hash=''; location.reload(); }; }
+    catch(e){ $('cErr').innerHTML=`<div class="err">${esc(e.message)}</div>`; } finally{ busy(false); } }; }
 
 /* ======================================================================
    SEKOLAH (Super Admin)
@@ -511,6 +542,9 @@ async function schEditDlg(id){ const s=schools.find(x=>x.id===id); if(!s) return
 const ACTIONS={
   logout:async()=>{ await API.logout(); location.hash=''; location.reload(); },
   toggleSuper:()=>{ loginSuper=!loginSuper; showLogin(); },
+  hubungkan:hubungkanDlg,
+  unduhConfig:()=>unduhConfig(API.cfgInfo),
+  putuskan:async()=>{ if(!await confirmBox('Putuskan koneksi Supabase di browser ini dan kembali ke Mode demo?','Putuskan',true)) return; localStorage.removeItem(CFG_KEY); try{ await API.logout(); }catch(e){} location.hash=''; location.reload(); },
   closeDlg:closeDialog,
   copy:b=>copyText(b.dataset.v),
   setujui:b=>setujui([+b.dataset.id]),
