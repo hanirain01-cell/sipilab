@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b1f4d">
+<title>Pinjam Alat Lab</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232563eb'/%3E%3Cpath d='M32 14 16 23v18l16 9 16-9V23z' fill='none' stroke='%23fff' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M16 23l16 9 16-9M32 32v18' fill='none' stroke='%23fff' stroke-width='4' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+/* alamat file: relatif saat dibuka langsung (file:// atau *.html), absolut di Vercel (/kode, /kode/admin) */
+window.__B=(location.protocol==='file:'||/\.html$/.test(location.pathname))?'':'/';
+document.write('<link rel="stylesheet" href="'+__B+'css/style.css">');
+window.__fail=function(m){var r=document.getElementById('root');if(r&&!r.innerHTML.trim())r.innerHTML='<div style="max-width:560px;margin:60px auto;padding:20px;font:15px/1.5 system-ui;background:#fee2e2;color:#7f1d1d;border-radius:14px"><b>Halaman gagal dimuat.</b><br>'+m+'</div>';};
+window.addEventListener('error',function(e){if(e&&e.target&&(e.target.src||e.target.href))__fail('File tidak ditemukan: '+(e.target.src||e.target.href)+'<br>Pastikan folder <b>js</b> dan <b>css</b> ikut diunggah.');else if(e&&e.message)__fail(e.message);},true);
+</script>
+</head>
+<body>
+<div class="busy" id="busy"></div>
+<div id="root"></div>
+<div class="cartbar" id="cartbar"><div class="in"><div class="grow"><b id="cartN">0 alat</b><div class="small muted" id="cartList"></div></div><button class="btn lg" data-act="ajukan">Ajukan peminjaman</button></div></div>
+<div class="modal" id="dlgModal"><div class="dlg" id="dlgBox"></div></div>
+<div id="toasts"></div>
+<script>['g3','api','core','siswa'].forEach(function(n){document.write('<script src="'+__B+'js/'+n+'.js"><\/script>');});</script>
+<script>setTimeout(function(){if(typeof boot!=='function')__fail('Script aplikasi tidak termuat.');},4000);</script>
+</body>
+</html>

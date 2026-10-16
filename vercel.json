@@ -1,0 +1,17 @@
+{
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/admin", "destination": "/index.html" },
+    { "source": "/:kode([a-z0-9][a-z0-9-]{1,29})/admin", "destination": "/index.html" },
+    { "source": "/:kode([a-z0-9][a-z0-9-]{1,29})", "destination": "/pinjam.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
+}
